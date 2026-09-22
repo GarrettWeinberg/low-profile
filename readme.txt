@@ -3,7 +3,7 @@ Contributors: garrettweinberg
 Tags: security, hardening, xml-rpc, user enumeration, privacy
 Requires at least: 6.0
 Tested up to: 7.1
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -47,7 +47,7 @@ Every guard is a single switch on **Settings → Low Profile**, and everything i
 
 **File editing**
 
-* Disables the theme and plugin editors in wp-admin (`DISALLOW_FILE_EDIT`), unless the site configuration already decided.
+* Disables the theme and plugin editors in wp-admin. This is done through WordPress's capability checks rather than by relying on `DISALLOW_FILE_EDIT`, so it holds on hosts whose generated `wp-config.php` sets that constant to false (WP Engine does). A configuration that already sets it to true is respected.
 
 **Search engine indexing**
 
@@ -101,6 +101,9 @@ It replaces the "hide WordPress" and "stop user enumeration" parts of one, witho
 It works per site. There is no network-level settings screen in this version.
 
 == Changelog ==
+
+= 1.0.1 =
+* The file-editor guard now works on hosts that define DISALLOW_FILE_EDIT as false in their generated wp-config.php, such as WP Engine. It previously deferred to the constant, which cannot be redefined, and left the editors open there.
 
 = 1.0.0 =
 * Initial release.

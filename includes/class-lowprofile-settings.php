@@ -175,7 +175,7 @@ final class LowProfile_Settings {
 			),
 			'file_edit'             => array(
 				'label' => __( 'Disable the theme and plugin file editors', 'low-profile' ),
-				'desc'  => __( 'Sets DISALLOW_FILE_EDIT unless the site configuration already decided. Code changes belong in version control, not in wp-admin.', 'low-profile' ),
+				'desc'  => __( 'Removes the editor capability through WordPress\'s own checks, so the switch holds even where the host\'s configuration sets DISALLOW_FILE_EDIT to false, as WP Engine\'s does. Code changes belong in version control, not in wp-admin.', 'low-profile' ),
 			),
 			'noindex'               => array(
 				'label' => __( 'Never index non-production hosts', 'low-profile' ),

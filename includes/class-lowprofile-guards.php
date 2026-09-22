@@ -81,8 +81,8 @@ final class LowProfile_Guards {
 			self::$login_message = (string) $s['login_message'];
 			self::login_errors();
 		}
-		if ( ! empty( $s['file_edit'] ) && ! defined( 'DISALLOW_FILE_EDIT' ) ) {
-			define( 'DISALLOW_FILE_EDIT', true );
+		if ( ! empty( $s['file_edit'] ) ) {
+			self::file_edit();
 		}
 		if ( ! empty( $s['noindex'] ) ) {
 			self::$noindex_hosts = array_values( array_filter( array_map( 'trim', explode( "\n", strtolower( (string) $s['noindex_hosts'] ) ) ) ) );
@@ -397,6 +397,39 @@ final class LowProfile_Guards {
 		}
 
 		return esc_html( $message );
+	}
+
+	// --- File editing -----------------------------------------------------------
+
+	/**
+	 * Disable the theme and plugin editors. DISALLOW_FILE_EDIT is set when
+	 * nothing else has, but a constant cannot be redefined and some hosts
+	 * hard-code it to false in the wp-config.php they generate (WP Engine
+	 * does), so the guard does not depend on it. Core maps edit_themes,
+	 * edit_plugins and edit_files to do_not_allow whenever
+	 * wp_is_file_mod_allowed( 'capability_edit_themes' ) answers false,
+	 * whatever the constant says. Answering false there removes the editor
+	 * screens, their menu entries and the "Edit" links on the Plugins and
+	 * Themes screens. Other contexts of that filter (updates, language
+	 * packs) are left alone.
+	 */
+	private static function file_edit() {
+		if ( ! defined( 'DISALLOW_FILE_EDIT' ) ) {
+			define( 'DISALLOW_FILE_EDIT', true );
+		}
+		add_filter( 'file_mod_allowed', array( __CLASS__, 'disallow_editor_capability' ), 10, 2 );
+	}
+
+	/**
+	 * Refuse the editor capability; leave every other file_mod_allowed
+	 * context as it was.
+	 *
+	 * @param bool   $allowed Whether file modification is allowed.
+	 * @param string $context The usage context core is asking about.
+	 * @return bool
+	 */
+	public static function disallow_editor_capability( $allowed, $context ) {
+		return 'capability_edit_themes' === $context ? false : $allowed;
 	}
 
 	// --- Indexing ---------------------------------------------------------------
