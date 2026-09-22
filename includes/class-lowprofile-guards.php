@@ -37,6 +37,15 @@ final class LowProfile_Guards {
 	private static $login_message = '';
 
 	/**
+	 * Whether the login screen's lost-password request matched an account
+	 * and passed every validator. Anything that fails after that point can
+	 * only happen for a known account.
+	 *
+	 * @var bool
+	 */
+	private static $lost_password_matched = false;
+
+	/**
 	 * Hook everything that is switched on.
 	 *
 	 * @param array<string, mixed> $s Settings.
@@ -165,6 +174,10 @@ final class LowProfile_Guards {
 		remove_action( 'wp_print_styles', 'print_emoji_styles' );
 		remove_action( 'admin_print_scripts', 'print_emoji_detection_script' );
 		remove_action( 'admin_print_styles', 'print_emoji_styles' );
+		// The embed template has its own head and enqueue hooks.
+		remove_action( 'embed_head', 'print_emoji_detection_script' );
+		remove_action( 'enqueue_embed_scripts', 'wp_enqueue_emoji_styles' );
+		remove_action( 'wp_enqueue_scripts', 'wp_enqueue_emoji_styles' );
 		remove_filter( 'the_content_feed', 'wp_staticize_emoji' );
 		remove_filter( 'comment_text_rss', 'wp_staticize_emoji' );
 		remove_filter( 'wp_mail', 'wp_staticize_emoji_for_email' );
@@ -343,7 +356,11 @@ final class LowProfile_Guards {
 	 */
 	private static function login_errors() {
 		add_filter( 'authenticate', array( __CLASS__, 'normalise_login_error' ), 100 );
-		add_action( 'lostpassword_post', array( __CLASS__, 'hide_lost_password_result' ), 10, 2 );
+		// Last on the filter: every other validator has run by then, and core
+		// adds its "no account" error immediately after.
+		add_filter( 'lostpassword_errors', array( __CLASS__, 'hide_lost_password_result' ), PHP_INT_MAX, 2 );
+		// Failures after that point only happen for a known account.
+		add_action( 'lost_password', array( __CLASS__, 'hide_lost_password_failure' ), 0 );
 	}
 
 	/**
@@ -368,18 +385,90 @@ final class LowProfile_Guards {
 
 	/**
 	 * The lost-password form says outright when no account matches. Send an
-	 * unknown username to the same "check your email" screen a known one
-	 * gets, so both outcomes look identical.
+	 * unknown account to exactly where wp-login.php sends a known one, so
+	 * the two outcomes are indistinguishable.
+	 *
+	 * This runs last on `lostpassword_errors`, after every other
+	 * lostpassword_post and lostpassword_errors validator, and just before
+	 * retrieve_password() adds `invalidcombo` for an unmatched username.
+	 * Core adds `invalid_email` earlier when the input looks like an email
+	 * address and matches nothing; both codes name the disclosure. Any
+	 * other error (an empty field, a captcha plugin's check) is a genuine
+	 * validation failure that a known account would also get, so it is
+	 * returned, with the "no account" error taken out of the list.
+	 *
+	 * The redirect target is taken exactly as wp-login.php takes it for a
+	 * known account: the raw form value, validated by wp_safe_redirect(),
+	 * so both cases produce the same Location header.
+	 *
+	 * Only the login screen's own request is handled: it is the one place
+	 * the outcome is a redirect. Other callers of retrieve_password() get
+	 * their return value untouched rather than being terminated.
 	 *
 	 * @param WP_Error           $errors    Validation errors so far.
 	 * @param WP_User|false|null $user_data The matched user, or false.
+	 * @return WP_Error
 	 */
 	public static function hide_lost_password_result( $errors, $user_data = null ) {
-		if ( $user_data || ( $errors instanceof WP_Error && $errors->has_errors() ) ) {
+		if ( ! did_action( 'login_init' ) ) {
+			return $errors;
+		}
+
+		if ( $user_data ) {
+			self::$lost_password_matched = ! ( $errors instanceof WP_Error && $errors->has_errors() );
+			return $errors;
+		}
+
+		if ( $errors instanceof WP_Error && $errors->has_errors() ) {
+			// Other validators' errors display for a known account too, so
+			// they may display here; only the "no account" one may not.
+			$errors->remove( 'invalid_email' );
+			if ( $errors->has_errors() ) {
+				return $errors;
+			}
+		}
+
+		self::redirect_as_lost_password_success();
+	}
+
+	/**
+	 * Once an account has matched and passed validation, retrieve_password()
+	 * can still fail in ways an unknown account never does: the reset key
+	 * could not be stored, the email could not be sent, or a plugin's
+	 * `allow_password_reset` callback refused, with whatever error code it
+	 * chose. wp-login.php would display those, and the display alone
+	 * confirms the account. Send them down the success redirect instead.
+	 * The failure is still reported where it matters: wp_mail() fires
+	 * `wp_mail_failed`, and get_password_reset_key() fires
+	 * `retrieve_password_key`, so logging plugins see it.
+	 *
+	 * Runs on `lost_password`, which wp-login.php fires only on its own
+	 * lost-password screen. Without a matched, validated account (a GET, an
+	 * empty field, a failed captcha) nothing happens. With one, this point
+	 * is only reached when retrieve_password() failed: on success
+	 * wp-login.php has already redirected. So no error code is inspected;
+	 * a plugin may refuse with any code, including ones core also uses for
+	 * its ?error= notices.
+	 *
+	 * @param WP_Error|mixed $errors The result wp-login.php is about to show.
+	 */
+	public static function hide_lost_password_failure( $errors ) {
+		if ( ! self::$lost_password_matched || ! $errors instanceof WP_Error ) {
 			return;
 		}
 
-		wp_safe_redirect( add_query_arg( 'checkemail', 'confirm', wp_login_url() ) );
+		self::redirect_as_lost_password_success();
+	}
+
+	/**
+	 * Exactly what wp-login.php does after a successful request: follow the
+	 * form's redirect_to when set, otherwise the "check your email" screen.
+	 */
+	private static function redirect_as_lost_password_success() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.MissingUnslash,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- the same raw read wp-login.php does for a known account; wp_safe_redirect() sanitizes and validates it, and any transformation here would make the two redirects differ.
+		$redirect_to = ! empty( $_REQUEST['redirect_to'] ) ? $_REQUEST['redirect_to'] : 'wp-login.php?checkemail=confirm';
+
+		wp_safe_redirect( $redirect_to );
 		exit;
 	}
 
@@ -442,6 +531,11 @@ final class LowProfile_Guards {
 	private static function noindex() {
 		add_filter( 'wp_robots', array( __CLASS__, 'noindex_robots_meta' ), 20 );
 		add_filter( 'wp_headers', array( __CLASS__, 'noindex_header' ) );
+		// wp_headers only runs for front-end requests. wp-login.php, wp-admin
+		// and admin-ajax.php never reach it; the REST API sends its own
+		// noindex header in core.
+		add_action( 'login_init', array( __CLASS__, 'send_noindex_header' ) );
+		add_action( 'admin_init', array( __CLASS__, 'send_noindex_header' ) );
 		add_filter( 'robots_txt', array( __CLASS__, 'noindex_robots_txt' ), 20 );
 		add_filter( 'wp_sitemaps_enabled', array( __CLASS__, 'noindex_sitemaps' ), 20 );
 	}
@@ -509,6 +603,15 @@ final class LowProfile_Guards {
 		}
 
 		return $headers;
+	}
+
+	/**
+	 * X-Robots-Tag on the entry points wp_headers does not cover.
+	 */
+	public static function send_noindex_header() {
+		if ( self::is_non_production() && ! headers_sent() ) {
+			header( 'X-Robots-Tag: noindex, nofollow' );
+		}
 	}
 
 	/**

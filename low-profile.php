@@ -3,7 +3,7 @@
  * Plugin Name:       Low Profile
  * Plugin URI:        https://github.com/GarrettWeinberg/low-profile
  * Description:       Hides what identifies your WordPress install and closes the enumeration paths it leaves open by default — version markers, discovery links, XML-RPC, the public users list, author archives and the login form's username hints.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Garrett Weinberg
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'LOWPROFILE_VERSION', '1.0.1' );
+define( 'LOWPROFILE_VERSION', '1.0.2' );
 define( 'LOWPROFILE_FILE', __FILE__ );
 define( 'LOWPROFILE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LOWPROFILE_OPTION', 'lowprofile_settings' );

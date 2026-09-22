@@ -3,7 +3,7 @@ Contributors: garrettweinberg
 Tags: security, hardening, xml-rpc, user enumeration, privacy
 Requires at least: 6.0
 Tested up to: 7.1
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -43,7 +43,7 @@ Every guard is a single switch on **Settings → Low Profile**, and everything i
 **Login form**
 
 * One message whether the username or the password was wrong, instead of WordPress confirming which usernames exist. The wording is editable. It is applied where authentication happens, so it covers a theme's own login form as well as wp-login.php, and leaves password-reset and registration messages alone.
-* The lost-password form sends an unknown username to the same "check your email" screen a known one gets, so it no longer confirms which accounts exist.
+* The lost-password form sends an unknown username or email address exactly where a known one goes, so it no longer confirms which accounts exist.
 
 **File editing**
 
@@ -51,7 +51,7 @@ Every guard is a single switch on **Settings → Low Profile**, and everything i
 
 **Search engine indexing**
 
-* When the site address ends with a non-production suffix such as `.wpenginepowered.com`, `.kinsta.cloud` or `.ddev.site`: `noindex, nofollow` on every page and as an `X-Robots-Tag` header on every response, a disallow-all `robots.txt`, and no sitemap. Because this is decided by hostname rather than by the "discourage search engines" option, copying a database between staging and production can never carry the wrong indexing state with it. The suffix list is editable.
+* When the site address ends with a non-production suffix such as `.wpenginepowered.com`, `.kinsta.cloud` or `.ddev.site`: `noindex, nofollow` on every page and as an `X-Robots-Tag` header on every WordPress response, including the login screen and wp-admin, a disallow-all `robots.txt`, and no sitemap. Files served directly by the web server (uploads, static assets) need a server-level rule. Because this is decided by hostname rather than by the "discourage search engines" option, copying a database between staging and production can never carry the wrong indexing state with it. The suffix list is editable.
 
 = What it deliberately does not do =
 
@@ -101,6 +101,11 @@ It replaces the "hide WordPress" and "stop user enumeration" parts of one, witho
 It works per site. There is no network-level settings screen in this version.
 
 == Changelog ==
+
+= 1.0.2 =
+* The lost-password guard no longer confirms unknown accounts when the input looks like an email address, follows the form's redirect_to exactly as a known account does, runs after other plugins' validators so their errors show for known and unknown accounts alike, and gives a failed or disallowed reset for a known account the same response as an unknown one. It now acts only on the login screen's own request.
+* The emoji detection script is also removed from the embed template.
+* The non-production X-Robots-Tag header is also sent on wp-login.php, wp-admin and admin-ajax.php.
 
 = 1.0.1 =
 * The file-editor guard now works on hosts that define DISALLOW_FILE_EDIT as false in their generated wp-config.php, such as WP Engine. It previously deferred to the constant, which cannot be redefined, and left the editors open there.
